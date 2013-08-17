@@ -1,0 +1,7 @@
+# Github username and password
+username    user
+password    secret
+
+# Options
+deep    5
+output  svg
