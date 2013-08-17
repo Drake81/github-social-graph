@@ -14,7 +14,7 @@ sub new
     return $self;
 }
 
-sub setFollowers {
+sub setFollower {
     my ( $self, $followers ) = @_;
     $self->{_follower} = $followers if defined($followers);
 }

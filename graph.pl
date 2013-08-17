@@ -23,41 +23,56 @@ my $cfg         = new Config::Simple("$currentpath/graph.config");
 # some global variables
 my $username = $cfg->param('username');
 my $password = $cfg->param('password');
-my $deep     = $cfg->param('deep');
+my $depth     = $cfg->param('depth');
 my $output   = $cfg->param('output');
 
 my $json = JSON->new->allow_nonref;
 
-# All related persons to account
+# All related persons to a account
 my %people;
-
 
 # Made user the first person
 my $self = makePerson($username);
 $people{$username} = $self; 
 
 # aggregate others
-followlinks($self,$deep);
+followlinks($self,$depth);
 
-# Output
-while(my @array=each(%people))
+
+# Build the graph
+my($graph) = GraphViz2 -> new(
+                 edge   => {color => 'grey'},
+                 global => {directed => 1},
+                 graph  => {
+                    label => 'Social graph',
+                    rankdir => 'TB',
+                    overlap => 'false',
+                    ranksep => '1.5',
+                    nodesep => '0.5',
+                 },
+                 node   => {shape => 'oval'},
+);
+
+# Generate nodes
+while(my @person=each(%people))
 {
- print "Wert: $array[0]    ";
- print "Schluessel: $array[1]\n";
+    $graph -> add_node(name => $person[0], shape => 'box', color => 'blue');
 }
 
+while(my @person=each(%people))
+{
+    foreach my $follower (@{${$person[1]}{_follower}}) {
+        $graph -> add_edge(from => $person[0], to => $follower, arrowsize => 1, color => 'green', dir => 'back');
+    } 
+    
+    foreach my $following (@{${$person[1]}{_following}}) {
+        $graph -> add_edge(from => $person[0], to => $following, arrowsize => 1, color => 'blue', dir => 'forward');
+    } 
+}
 
+$graph->run(format => $output, output_file => "$username.$output");
 
-#my($graph) = GraphViz2 -> new(
-#                       edge   => {color => 'grey'},
-#                       global => {directed => 1},
-#                       graph  => {label => 'Adult', rankdir => 'TB'},
-#                       logger => $logger,
-#                       node   => {shape => 'oval'},
-#);
-#
 #$graph -> add_node(name => 'Carnegie', shape => 'circle');
-#$graph -> add_node(name => 'Murrumbeena', shape => 'box', color => 'green');
 #$graph -> add_node(name => 'Oakleigh',    color => 'blue');
 #
 #$graph -> add_edge(from => 'Murrumbeena', to    => 'Carnegie', arrowsize => 2);
@@ -87,7 +102,6 @@ while(my @array=each(%people))
 #my($format)      = shift || "svg";
 #my($output_file) = shift || "sub.graph.$format";
 #
-#$graph -> run(format => $format, output_file => $output_file);
 
 
 
@@ -98,12 +112,12 @@ while(my @array=each(%people))
 # traverse all persons on github
 sub followlinks {
     my $actperson = shift;
-    my $actdeep = shift;
+    my $actdepth = shift;
     
-    if($actdeep == 0){
+    if($actdepth == 0){
         return;
     }
-    $actdeep--;
+    $actdepth--;
     
     foreach my $person (@{$actperson->getFollower()}) {
     
@@ -112,7 +126,7 @@ sub followlinks {
             
             my $self = makePerson($person);
             $people{$person} = $self;
-            followlinks($self,$actdeep);
+            followlinks($self,$actdepth);
         }
     }
 }
