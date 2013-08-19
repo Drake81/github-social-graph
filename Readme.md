@@ -1,3 +1,5 @@
-# Just a little play around with perl and graphviz.
+#github-social-graph
 
-Did not render big graphs at moment... 
+Just a little play around with perl and graphviz.
+
+Did not render big graphs at the moment...
