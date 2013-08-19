@@ -10,7 +10,7 @@ use File::Basename;
 
 use LWP::Simple;
 use JSON;
-
+use Log::Handler;
 use GraphViz2;
 
 use lib "packages";
@@ -38,25 +38,47 @@ $people{$username} = $self;
 # aggregate others
 followlinks($self,$depth);
 
+my($logger) = Log::Handler -> new;
 
+$logger -> add(
+         screen =>
+         {
+                 maxlevel       => 'debug',
+                 message_layout => '%m',
+                 minlevel       => 'error',
+         }
+);
+
+
+#logger => $logger,
 # Build the graph
 my($graph) = GraphViz2 -> new(
                  edge   => {color => 'grey'},
                  global => {directed => 1},
                  graph  => {
                     label => 'Social graph',
-                    rankdir => 'TB',
+                    layout => 'circo',
+                    splines => 'compound',
                     overlap => 'false',
-                    ranksep => '1.5',
-                    nodesep => '0.5',
                  },
                  node   => {shape => 'oval'},
 );
 
+print "Generate Graph\n";
+
 # Generate nodes
 while(my @person=each(%people))
 {
-    $graph -> add_node(name => $person[0], shape => 'box', color => 'blue');
+    $graph -> add_node(name => $person[0], color => 'blue',shape => 'house');
+
+    foreach my $repo (@{${$person[1]}{_repos}}) {
+        $graph -> add_node(name => $repo, color => 'violet',shape => 'box');
+    }
+
+    foreach my $star (@{${$person[1]}{_starred}}) {
+        $graph -> add_node(name => $star, color => 'red',shape => 'diamond');
+    } 
+
 }
 
 while(my @person=each(%people))
@@ -68,48 +90,25 @@ while(my @person=each(%people))
     foreach my $following (@{${$person[1]}{_following}}) {
         $graph -> add_edge(from => $person[0], to => $following, arrowsize => 1, color => 'blue', dir => 'forward');
     } 
+    
+    foreach my $star (@{${$person[1]}{_starred}}) {
+        $graph -> add_edge(from => $person[0], to => $star, arrowsize => 1, color => 'red', dir => 'forward');
+    } 
+    
+    foreach my $repo (@{${$person[1]}{_repos}}) {
+        $graph -> add_edge(from => $person[0], to => $repo, arrowsize => 1, color => 'violet', dir => 'forward');
+    } 
 }
 
-$graph->run(format => $output, output_file => "$username.$output");
+print "Graph ready -> Output\n";
 
-#$graph -> add_node(name => 'Carnegie', shape => 'circle');
-#$graph -> add_node(name => 'Oakleigh',    color => 'blue');
-#
-#$graph -> add_edge(from => 'Murrumbeena', to    => 'Carnegie', arrowsize => 2);
-#$graph -> add_edge(from => 'Murrumbeena', to    => 'Oakleigh', color => 'brown');
-#
-#$graph -> push_subgraph(
-#                        name  => 'cluster_1',
-#                        graph => {label => 'Child'},
-#                        node  => {color => 'magenta', shape => 'diamond'},
-#);
-#                                
-#$graph -> add_node(name => 'Chadstone', shape => 'hexagon');
-#$graph -> add_node(name => 'Waverley', color => 'orange');
-#
-#$graph -> add_edge(from => 'Chadstone', to => 'Waverley');
-#
-#$graph -> pop_subgraph;
-#
-#$graph -> default_node(color => 'cyan');
-#
-#$graph -> add_node(name => 'Malvern');
-#$graph -> add_node(name => 'Prahran', shape => 'trapezium');
-#
-#$graph -> add_edge(from => 'Malvern', to => 'Prahran');
-#$graph -> add_edge(from => 'Malvern', to => 'Murrumbeena');
-#
-#my($format)      = shift || "svg";
-#my($output_file) = shift || "sub.graph.$format";
-#
+$graph->run(driver => 'sfdp', format => $output, output_file => "$username.$output");
 
-
-
-
+print "Finish\n";
 
 ###### Subs
 
-# traverse all persons on github
+# traverse all persons on github related to the user
 sub followlinks {
     my $actperson = shift;
     my $actdepth = shift;
@@ -129,6 +128,18 @@ sub followlinks {
             followlinks($self,$actdepth);
         }
     }
+
+    foreach my $person (@{$actperson->getFollowing()}) {
+    
+        if(!(exists $people{$person})){
+            print "Create a new entry for \"$person\"\n";
+            
+            my $self = makePerson($person);
+            $people{$person} = $self;
+            followlinks($self,$actdepth);
+        }
+    }
+
 }
 
 #init a new person
@@ -154,8 +165,28 @@ sub makePerson {
         push (@following, $ifollow->{"login"});
     }
 
+    # Get Starred
+    $rawdata = get("https://$username:$password\@api.github.com/users/$name/starred");
+    my $json_starred = $json->decode($rawdata);
+
+    # write stars to array
+    my @starred;
+    foreach my $star (@$json_starred) {
+        push (@starred, $star->{"full_name"});
+    }
+
+    # Get Repos
+    $rawdata = get("https://$username:$password\@api.github.com/users/$name/repos");
+    my $json_repos = $json->decode($rawdata);
+
+    # write Repos to array
+    my @repos;
+    foreach my $repo (@$json_repos) {
+        push (@repos, $repo->{"full_name"});
+    }
+
     # make me to the first person
-    my $self = new Person( $name, \@followers, \@following);
+    my $self = new Person( $name, \@followers, \@following, \@starred, \@repos);
 
     return $self;
 }
